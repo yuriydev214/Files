@@ -1,0 +1,427 @@
+/* eslint-disable jsx-a11y/anchor-is-valid */
+import React, { Component } from 'react';
+import { connect } from 'react-redux';
+import { bindActionCreators } from 'redux';
+import get from 'lodash/get';
+import Footer from 'components/Footer';
+import Button from 'components/Button';
+import Avatar from 'components/Avatar';
+import Chat from 'components/Chat';
+import EnvironmentItem from 'components/EnvironmentItem';
+import Checkbox from 'components/Checkbox';
+import Modal from 'components/Modal';
+import Tooltip from 'components/Tooltip';
+import SavingChart from 'components/SavingChart';
+import Expand from 'components/Expand';
+import SunroofImage from 'components/SunroofImage';
+import SunroofInfo from 'components/SunroofInfo';
+import { ReactComponent as CarbonDioxideIcon } from 'assets/images/icon-carbon-dioxide.svg';
+import { ReactComponent as LeafIcon } from 'assets/images/icon-leaf.svg';
+import { ReactComponent as StationIcon } from 'assets/images/icon-station.svg';
+import { ReactComponent as TooltipIcon } from 'assets/images/icon-tooltip.svg';
+import imgStop from 'assets/images/stop.png';
+import { ReactComponent as GiftIcon } from 'assets/images/icon-gift.svg';
+import {
+  setUserData,
+  saveSession,
+  navigateTo,
+  trackForwardProgress,
+} from 'store/actions';
+import { engineSolarFindBuilding } from 'common/api.mock';
+import { formatNumber, checkIfSunroofIsLoaded } from 'common/utils';
+import { getLocalStorageItem } from 'common/localStorage';
+import { VARIATION_OPTIONS } from 'pages/constants';
+import StyledProposalsVariation3, { CircleText } from './styled';
+
+class ProposalsVariation3 extends Component {
+  constructor(props) {
+    super(props);
+
+    const variation = getLocalStorageItem('variation');
+    this.state = {
+      showDialog: false,
+      checked: false,
+      loading: true,
+      squareFeet: null,
+      sunshineHours: null,
+      centerLat: null,
+      centerLng: null,
+      error: null,
+      variation: VARIATION_OPTIONS[variation],
+    };
+
+    this.divRef = React.createRef();
+  }
+
+  componentDidMount() {
+    this.initData();
+  }
+
+  initData = async () => {
+    const { theme, user } = this.props;
+    if (!theme.is_sunroof_enabled) {
+      this.setState({ loading: false, error: 'Skip sunroof' });
+      return;
+    }
+    const { data: building } = await engineSolarFindBuilding(
+      { latitude: user.rooftop_latitude, longitude: user.rooftop_longitude },
+      theme.google_api_gateway_key
+    );
+    if (!building) {
+      this.setState({
+        loading: false,
+        error: 'Requested location is not supported by Google Sunroof API.',
+      });
+    } else {
+      const squareFeet = formatNumber(
+        Math.round(
+          get(building, 'solarPotential.maxArrayAreaMeters2', 0) * 10.764
+        )
+      );
+      const centerLat = get(building, 'center.latitude', 0);
+      const centerLng = get(building, 'center.longitude', 0);
+      const sunshineHours = formatNumber(
+        Math.round(get(building, 'solarPotential.maxSunshineHoursPerYear', 0))
+      );
+      await checkIfSunroofIsLoaded(centerLat, centerLng);
+      this.setState({
+        loading: false,
+        squareFeet,
+        centerLat,
+        centerLng,
+        sunshineHours,
+      });
+    }
+    // setTimeout(() => {
+    //   this.setState({ showDialog: true });
+    // }, 4000);
+  };
+
+  handleCloseDialog = () => {
+    const { checked } = this.state;
+    if (!checked) {
+      return;
+    }
+    this.setState({ showDialog: false });
+  };
+
+  // handleNext = async () => {
+  //   const { actions } = this.props;
+  //   const { checked } = this.state;
+  //   actions.setUserData({
+  //     step: '/qualify/default1',
+  //     terms_consent: checked ? 1 : null,
+  //   });
+  //   await actions.saveSession();
+  //   actions.trackForwardProgress();
+  //   await actions.navigateTo('/qualify/default1');
+  // };
+
+  handleCheck = (event) => {
+    this.setState({ checked: event.target.checked });
+  };
+
+  render() {
+    const { user, theme } = this.props;
+    const {
+      showDialog,
+      checked,
+      loading,
+      sunshineHours,
+      centerLat,
+      centerLng,
+      squareFeet,
+      error,
+      variation,
+    } = this.state;
+    const data = { ...user };
+    const projectSunroof =
+      !loading &&
+      !error &&
+      centerLat &&
+      centerLng &&
+      (squareFeet || sunshineHours);
+
+    return (
+      <>
+        <variation.header showRestartButton={false} />
+        <div className="main-container">
+          <div
+            className="main"
+            style={{
+              height: !loading ? 'initial' : null,
+            }}
+          >
+            {loading ? (
+              <div className="content">
+                <div className="form">
+                  <div className="form-content">
+                    <Chat mode="loading" loading={loading} />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <StyledProposalsVariation3 className="content result-3-page">
+                <div className="form">
+                  <div className="white-section text-center">
+                    <div className="section-container">
+                      <div className="mb-16">
+                        <Avatar size={78} />
+                      </div>
+                      <div className="mb-16 introduction">
+                        Here's what going solar in {data.city}, {data.state}{' '}
+                        could look like for someone with a $
+                        {formatNumber(data.avg_bill)} average utility bill.
+                      </div>
+                      {projectSunroof && (
+                        <div className="sunroof-container mt-32">
+                          {centerLat && centerLng && (
+                            <div className="image-container">
+                              <SunroofImage lat={centerLat} lng={centerLng} />
+                            </div>
+                          )}
+                          {(sunshineHours || squareFeet) && (
+                            <SunroofInfo
+                              sunshineHours={sunshineHours}
+                              squareFeet={squareFeet}
+                              className="mt-16"
+                            />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="dark-section text-center" ref={this.divRef}>
+                    <div className="section-container">
+                      <div className="section-title-variation mb-16">
+                        Replace or greatly reduce your utility bill with solar
+                        for just...
+                      </div>
+                      <div className="mb-16">
+                        <CircleText>
+                          <div className="circle-text-main">
+                            {theme.price_system_display ||
+                            !theme.is_premier_account ? (
+                              `$${formatNumber(
+                                Math.round(data.monthly_payment_min)
+                              )}-${formatNumber(
+                                Math.round(data.monthly_payment_max)
+                              )}*`
+                            ) : data.monthly_payment_best_guess ? (
+                              <span className="exact-pricing-main-number">
+                                $
+                                {formatNumber(
+                                  Math.round(data.monthly_payment_best_guess)
+                                )}
+                                *
+                              </span>
+                            ) : (
+                              `$${formatNumber(
+                                Math.round(data.monthly_payment_min)
+                              )}-${formatNumber(
+                                Math.round(data.monthly_payment_max)
+                              )}*`
+                            )}
+                          </div>
+                          <div
+                            className={`circle-text-small ${
+                              theme.price_system_display ||
+                              !theme.is_premier_account
+                                ? ''
+                                : 'exact-pricing-main-number'
+                            }`}
+                          >
+                            per month
+                          </div>
+                        </CircleText>
+                      </div>
+                      <div className="bold-text">
+                        *{theme.product_apr || 3.99}% APR financing for{' '}
+                        {theme.product_term || 20} years on approved credit with
+                        zero down.
+                      </div>
+                    </div>
+                  </div>
+                  <div className="black-section">
+                    <div className="section-container">
+                      <div className="discount-block">
+                        <div className="bg-circle-icon">
+                          <GiftIcon />
+                        </div>
+                        <div className="discount-info">
+                          <div className="discount-title">
+                            Total Incentive Discounts
+                          </div>
+                          <div className="discount-value">
+                            ${`${formatNumber(data.incentive)}`}
+                            <sup>**</sup>
+                          </div>
+                          <div className="divider">
+                            <span className="divider-text">
+                              This year only!
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="dark-section text-center">
+                    <div className="section-container">
+                      <div className="section-title text-normal">
+                        25 Year Savings
+                      </div>
+                      <div className="section-description mb-32">
+                        ${`${formatNumber(data.savings)}`}
+                      </div>
+                      <SavingChart
+                        value1={data.avg_bill}
+                        value2={formatNumber(
+                          Math.round(data.avg_bill * 1.03 ** 10)
+                        )}
+                        value3={formatNumber(
+                          Math.round(data.avg_bill * 1.03 ** 25)
+                        )}
+                      />
+                    </div>
+                  </div>
+                  <div className="expand-section dark">
+                    <div className="section-container">
+                      <Expand title="Why do utility rates go up?">
+                        Utility rates in the US historically increased by 3%
+                        each year. This is based on a variety of market factors
+                        including inflation.
+                      </Expand>
+                    </div>
+                  </div>
+                  <div className="dark-section text-center">
+                    <div className="section-container">
+                      <div className="section-title">Environmental impact</div>
+                      <div className="environmental-list">
+                        <EnvironmentItem
+                          icon={<CarbonDioxideIcon />}
+                          title={`${data.co2_tons}`}
+                          content="Tons of CO2 avoided"
+                        />
+                        <EnvironmentItem title="=" />
+                        <EnvironmentItem
+                          icon={<LeafIcon />}
+                          title={`${data.tree_seedlings}`}
+                          content="Trees grown for 10 years"
+                        />
+                        <EnvironmentItem title="=" />
+                        <EnvironmentItem
+                          icon={<StationIcon />}
+                          title={`${data.gal_of_gas}`}
+                          content="Gallons of gas not used"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="white-section text-center">
+                    <div className="section-container">
+                      <div className="section-title">System Size</div>
+                      <div
+                        className="section-description"
+                        style={{ whiteSpace: 'nowrap' }}
+                      >
+                        {theme.price_system_display ||
+                        !theme.is_premier_account ? (
+                          `${data.install_size_min}-${data.install_size_max}`
+                        ) : (
+                          <span className="exact-system-size-number">
+                            {data.install_size}
+                          </span>
+                        )}
+                        <small>kW</small>{' '}
+                        <TooltipIcon data-for="tooltip" data-tip />
+                        <Tooltip id="tooltip" place="left">
+                          <div className="tooltip-content">
+                            {`${data.panels_min}-${data.panels_max}`} Panels
+                          </div>
+                        </Tooltip>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </StyledProposalsVariation3>
+            )}
+            {showDialog && (
+              <Modal isOpen={showDialog} className="stop-modal">
+                <div className="my-32">
+                  <img src={imgStop} alt="stop" />
+                </div>
+                <div className="modal-title">This is NOT a quote.</div>
+                <div className="modal-content">
+                  <div className="mb-32 text-center">
+                    To receive a quote, you need to qualify for solar and we’ll
+                    need to contact you to get copies of your most recent
+                    electric bills.
+                  </div>
+                  <div className="mb-32">
+                    <Checkbox onChange={this.handleCheck}>
+                      I understand that this is not a quote.
+                    </Checkbox>
+                  </div>
+                  <div className="mb-32">
+                    <Button
+                      full
+                      onClick={this.handleCloseDialog}
+                      disabled={!checked}
+                    >
+                      Continue
+                    </Button>
+                  </div>
+                </div>
+              </Modal>
+            )}
+            <Footer
+              customText={
+                !loading && (
+                  <div className="custom-text">
+                    DISCLAMER: <br />
+                    While every effort has been taken to ensure that the
+                    calculations are as accurate as possible, the information
+                    provided by the calculator trades some accuracy for its
+                    simplicity and ease of use. The information is general in
+                    nature and is not intended to be a substitute for legal,
+                    financial, or electrical engineering advice. Please use the
+                    figures provided by the calculator as ballpark figure ONLY.
+                    For more accurate financial savings estimates, please reach
+                    out to us directly to have a system customized to the roof
+                    of your home.
+                    <br /> <br />
+                    {theme.disclosure}
+                    <br /> <br />
+                    **Based on estimated system size, actual amount may vary.
+                  </div>
+                )
+              }
+            />
+          </div>
+        </div>
+      </>
+    );
+  }
+}
+
+const mapStateToProps = ({ user: { data }, ui: { theme } }) => ({
+  user: data,
+  theme,
+});
+
+const mapDispatchToProps = (dispatch) => ({
+  actions: bindActionCreators(
+    {
+      setUserData,
+      saveSession,
+      navigateTo,
+      trackForwardProgress,
+    },
+    dispatch
+  ),
+});
+
+export default connect(
+  mapStateToProps,
+  mapDispatchToProps
+)(ProposalsVariation3);
